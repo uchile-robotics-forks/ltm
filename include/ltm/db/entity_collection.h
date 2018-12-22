@@ -61,6 +61,9 @@ namespace ltm {
 
         protected:
 
+            EntityMsg _null_e;
+            std::set<std::string> _field_names;
+
             std::string _log_prefix;
             std::string ltm_get_type();
             std::string ltm_get_collection_name();
@@ -98,6 +101,7 @@ namespace ltm {
             bool ltm_has(int uid);
             bool ltm_get_last(uint32_t uid, EntityWithMetadataPtr &entity_ptr);
             bool ltm_retrace(uint32_t uid, const ros::Time &stamp, EntityMsg &entity);
+            void ltm_retrace_join(EntityMsg &entity, const std::vector<uint32_t> &logs);
             bool ltm_insert(const EntityMsg &entity);
             bool ltm_query(const std::string& json, ltm::QueryServer::Response &res, bool trail);
             bool ltm_update(uint32_t uid, const EntityMsg &entity);
@@ -110,7 +114,7 @@ namespace ltm {
             // Must be provided by the user
             virtual MetadataPtr make_metadata(const EntityMsg &entity) = 0;
             virtual void update(const EntityMsg &entity) = 0;
-            virtual void retrace(EntityMsg &entity, const std::vector<uint32_t> &logs) = 0;
+            virtual void copy_field(const std::string& field, EntityWithMetadataPtr &in, EntityMsg &out) = 0;
         };
 
     }

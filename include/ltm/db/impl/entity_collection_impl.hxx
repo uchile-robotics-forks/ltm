@@ -364,9 +364,100 @@ namespace ltm {
             meta.stamp = recall.timestamp;
 
             // retrace from plugin
-            this->retrace(entity, logs);
+            this->ltm_retrace_join(entity, logs);
             entity.meta = meta;
             return true;
+        }
+
+        template<class EntityMsg>
+        void EntityCollectionManager<EntityMsg>::ltm_retrace_join(EntityMsg &entity, const std::vector<uint32_t> &logs) {
+            // ROS_WARN_STREAM("...RETRACING FROM PLUGIN...");
+            entity = this->_null_e;
+
+            std::set<std::string> acquired_fields;
+            std::set<std::string> remaining_fields = this->_field_names;
+            uint32_t entity_uid = 0;
+
+            std::vector<std::string> all_fields(remaining_fields.begin(), remaining_fields.end());
+            // ROS_INFO_STREAM("ALL FIELDS (total=" << all_fields.size() << "): " << ltm::util::vector_to_str(all_fields));
+
+            std::vector<uint32_t>::const_iterator it;
+            for (it = logs.begin(); it != logs.end(); ++it) {
+                LogType log;
+                this->ltm_get_log(*it, log);
+                entity_uid = log.entity_uid;
+                // ROS_WARN_STREAM("Got log: " << log.log_uid << " for entity " << log.entity_uid);
+
+                EntityWithMetadataPtr diff;
+                bool loaded = false;
+
+                std::set<std::string>::iterator f_it;
+                for (f_it = remaining_fields.begin(); f_it != remaining_fields.end(); ++f_it) {
+                    std::string field = *f_it;
+                    // look for in new, updated and deleted
+                    bool found = false;
+
+                    std::vector<std::string>::iterator s_it;
+                    s_it = std::find(log.new_f.begin(), log.new_f.end(), field);
+                    if (s_it != log.new_f.end()) {
+                        found = true;
+                        // ROS_INFO_STREAM(" - f: " << field << " NEW");
+                        // RETRIEVE
+                        if (!loaded) {
+                            if (!this->ltm_get_diff(log.log_uid, diff)) {
+                                ROS_ERROR_STREAM(" - could not load trail entity register #: " << log.log_uid);
+                                break;
+                            }
+                            loaded = true;
+                        }
+                        this->copy_field(field, diff, entity);
+                    }
+                    if (!found) {
+                        s_it = std::find(log.updated_f.begin(), log.updated_f.end(), field);
+                        if (s_it != log.updated_f.end()) {
+                            found = true;
+                            // RETRIEVE
+                            // ROS_INFO_STREAM(" - f: " << field << " UPDATED");
+                            if (!loaded) {
+                                if (!this->ltm_get_diff(log.log_uid, diff)) {
+                                    ROS_ERROR_STREAM(" - could not load trail entity register #: " << log.log_uid);
+                                    break;
+                                }
+                                loaded = true;
+                            }
+                            this->copy_field(field, diff, entity);
+                        }
+                    }
+                    if (!found) {
+                        s_it = std::find(log.removed_f.begin(), log.removed_f.end(), field);
+                        if (s_it != log.removed_f.end()) {
+                            found = true;
+                            // OK (field is already null)
+                            // ROS_INFO_STREAM(" - f: " << field << " REMOVED");
+                        }
+                    }
+                    
+                    if (found) {
+                        acquired_fields.insert(field);
+                        remaining_fields.erase(field);
+
+                        if (remaining_fields.empty()) {
+                            ROS_INFO_STREAM("Entity (" << entity_uid << ") retrace. Found all fields ("
+                                            << acquired_fields.size() << ").");
+                            return;
+                        }
+                    } else {
+                        // ROS_INFO_STREAM(" - f: " << field << " - not found");
+                    }
+                }    
+            }
+            // size_t n_acquired = acquired_fields.size();
+            // size_t n_missing = remaining_fields.size();
+            // std::vector<std::string> acquired(acquired_fields.begin(), acquired_fields.end());
+            // std::vector<std::string> missing(remaining_fields.begin(), remaining_fields.end());
+            // ROS_INFO_STREAM("Entity (" << entity_uid << ") retrace."
+            //                 << "\n - " << n_acquired << " fields were remembered: " << ltm::util::vector_to_str(acquired) 
+            //                 << ".\n - " << n_missing << " fields are unknown: " << ltm::util::vector_to_str(missing));
         }
 
         template<class EntityMsg>
